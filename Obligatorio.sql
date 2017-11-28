@@ -419,44 +419,33 @@ CREATE OR REPLACE PROCEDURE RevisarRespuestaGenerica(id_respuesta_in IN NUMBER, 
 -- taria bueno usar esto (no me anda): https://stackoverflow.com/questions/242771/oracle-stored-procedure-with-parameters-for-in-clause
 -- DATOS DE PRUEBA:
 
+
 UPDATE RESPUESTA
 SET ESTADO = 'Revisada Ok'
 WHERE ID = (SELECT MAX(ID)
             FROM RESPUESTA
-            WHERE ID_ESPECIALIDAD IS NULL);
+            WHERE ESTADO IS NULL);
 
-UPDATE RESPUESTA
-SET ID_ESPECIALIDAD = (SELECT MAX(ID)
-                       FROM ESPECIALIDAD)
-WHERE ID = (SELECT MAX(ID)
-            FROM RESPUESTA
-            WHERE ID_ESPECIALIDAD IS NULL);
-
-INSERT INTO PALABRA_CLAVE (PALABRA) VALUES ('Ba�o');
 
 INSERT INTO PALABRA_CLAVE_RESPUESTA (ID_RESPUESTA, ID_PALABRA_CLAVE) VALUES ((SELECT MAX(ID)
                                                                               FROM RESPUESTA
-                                                                              WHERE ID_ESPECIALIDAD IS NULL),
+                                                                              WHERE ESTADO = 'Revisada Ok'),
                                                                              (SELECT MAX(ID)
                                                                               FROM PALABRA_CLAVE));
-
-INSERT INTO ESPECIALIDAD (DESCRIPCION) VALUES ('Funcional');
-
-INSERT INTO TIPO_CONSULTA (DESCRIPCION, ID_ESPECIALIDAD) VALUES ('Funcionamiento local', (SELECT MAX(ID)
-                                                                                          FROM ESPECIALIDAD));
 
 UPDATE CONSULTA
 SET ID_TIPO_CONSULTA = (SELECT MAX(ID)
                         FROM TIPO_CONSULTA)
 WHERE ID_RESPUESTA = (SELECT MAX(ID)
-                      FROM RESPUESTA)
+                      FROM RESPUESTA);
 
-INSERT INTO FUNCIONARIO_ESPECIALIDAD (DOCUMENTO_FUNCIONARIO, ID_ESPECIALIDAD) VALUES (47442944, (SELECT MAX(ID)
-                                                                                                 FROM ESPECIALIDAD));
+
 -- CREACION DE TABLAS
 CREATE TABLE PALABRA_CLAVE_PROCEDIMIENTO (
   ID_PALABRA_CLAVE NUMBER(10) CONSTRAINT PALABRA_CLAVE_PROCEDIMIENTO_FK REFERENCES PALABRA_CLAVE
 );
+
+INSERT INTO PALABRA_CLAVE_PROCEDIMIENTO VALUES((SELECT MAX(ID) FROM PALABRA_CLAVE));
 
 -- PROCEDIMIENTO 4
 CREATE OR REPLACE PROCEDURE RESPUESTASGENERICAS(tipo_de_consulta IN VARCHAR2)
