@@ -139,7 +139,7 @@ CREATE TABLE RESPUESTA (
   ID                    NUMBER(10)   NOT NULL PRIMARY KEY,
   DOCUMENTO_FUNCIONARIO INTEGER      NOT NULL CONSTRAINT RESPUESTA_TO_FUNCIONARIO_FK REFERENCES FUNCIONARIO,
   TEXTO                 VARCHAR2(50) NOT NULL,
-  ESTADO                VARCHAR2(20) CONSTRAINT RESPUESTA_SIMPLE_ESTADO CHECK (ESTADO IN
+  ESTADO                VARCHAR2(50) CONSTRAINT RESPUESTA_SIMPLE_ESTADO CHECK (ESTADO IN
                                                                                ('Pendiente de revision', 'Rechazada', 'Revisada Ok'))
 
 );
@@ -360,7 +360,41 @@ WHERE ID_RESPUESTA = (SELECT MAX(ID)
 INSERT INTO FUNCIONARIO_ESPECIALIDAD (DOCUMENTO_FUNCIONARIO, ID_ESPECIALIDAD) VALUES (47442944, (SELECT MAX(ID)
                                                                                                  FROM ESPECIALIDAD));
 
---- PRODECIMIENTOS
+--- PROCEDIMIENTOS
+
+--- UNO
+
+-- UNO
+
+DROP TABLE IDS_PRODUCTOS_RESPUESTA_GENERICA;
+CREATE TABLE IDS_PRODUCTOS_RESPUESTA_GENERICA (
+  ID_PRODUCTO NUMBER(10) CONSTRAINT ID_PRODUCTO_FK REFERENCES PRODUCTO
+);
+
+CREATE OR REPLACE PROCEDURE GenerarRespuestaGenerica(id_tipo_consulta IN NUMBER, detalle_consulta in VARCHAR, id_respuesta IN NUMBER, doc_funcionario IN NUMBER)
+IS
+  detalle_respuesta VARCHAR(50);
+  BEGIN
+
+    BEGIN
+      SELECT TEXTO
+      INTO detalle_respuesta
+      FROM RESPUESTA
+      WHERE ID = id_respuesta;
+    EXCEPTION
+      WHEN NO_DATA_FOUND THEN
+      detalle_respuesta := NULL;
+      DBMS_OUTPUT.PUT_LINE('No se encontro la respuesta buscada');
+    END;
+
+    IF detalle_respuesta != NULL
+    THEN
+      INSERT INTO RESPUESTA (DOCUMENTO_FUNCIONARIO, TEXTO, ESTADO) VALUES (doc_funcionario, detalle_respuesta, 'Pendiente de revision');
+    END IF;
+
+    COMMIT;
+  END;
+
 --- NAMBER CHU
 CREATE OR REPLACE PROCEDURE GenerarIncidentes
 IS
@@ -397,7 +431,7 @@ CREATE OR REPLACE PROCEDURE RevisarRespuestaGenerica(id_respuesta_in IN NUMBER, 
     BEGIN
       UPDATE RESPUESTA
       SET RESPUESTA.ESTADO = estado_deseado
-      WHERE RESPUESTA.ID = id_respuesta_in AND RESPUESTA.ID_ESPECIALIDAD IS NOT NULL;
+      WHERE RESPUESTA.ID = id_respuesta_in AND RESPUESTA.ESTADO IS NOT NULL;
 
       DELETE FROM PALABRA_CLAVE_RESPUESTA
       WHERE ID_RESPUESTA = id_respuesta_in;
