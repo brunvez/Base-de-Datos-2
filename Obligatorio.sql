@@ -286,6 +286,34 @@ FOR EACH ROW
       raise_application_error(-20001, 'Incidentes deben ser consultas con mas de 24 horas de antigüedad.');
     END IF;
   END;
+  
+  
+CREATE OR REPLACE TRIGGER RESPUESTA_ESPECIALIDAD_UNICA
+BEFORE INSERT OR UPDATE ON CONSULTA
+FOR EACH ROW
+  DECLARE
+    respuesta_especialidad NUMBER(10);
+    consulta_especialidad  NUMBER(10);
+    num                    NUMBER;
+  BEGIN
+    IF :NEW.ID_RESPUESTA IS NOT NULL
+    THEN
+      SELECT COUNT(DISTINCT ID_ESPECIALIDAD)
+      INTO num
+      FROM (SELECT id_especialidad
+            FROM TIPO_CONSULTA
+            WHERE :new.ID_TIPO_CONSULTA = TIPO_CONSULTA.ID
+            UNION SELECT TIPO_CONSULTA.ID_ESPECIALIDAD
+                  FROM RESPUESTA
+                    JOIN CONSULTA ON RESPUESTA.ID = CONSULTA.ID_RESPUESTA
+                    JOIN TIPO_CONSULTA ON CONSULTA.ID_TIPO_CONSULTA = TIPO_CONSULTA.ID
+                  WHERE RESPUESTA.ID = :NEW.ID_RESPUESTA);
+      IF num > 1
+      THEN
+        raise_application_error(-20001, 'Respuestas deben tener la misma especialidad');
+      END IF;
+    END IF;
+  END;
 
 --  DATOS DE PRUEBA
 
@@ -508,6 +536,7 @@ IS
           JOIN PALABRA_CLAVE_RESPUESTA PCR ON R.ID = PCR.ID_RESPUESTA
           JOIN PALABRA_CLAVE PC ON PCR.ID_PALABRA_CLAVE = PC.ID
         WHERE TC.DESCRIPCION = tipo_de_consulta
+				AND R.ESTADO = 'Revisada Ok'
               AND PC.PALABRA IN (SELECT PALABRA
                                  FROM PALABRA_CLAVE_PROCEDIMIENTO
                                    JOIN PALABRA_CLAVE
@@ -538,12 +567,11 @@ IS
     END;
   END;
 -- test
-execute RESPUESTASGENERICAS('Funcionamiento local');
+-- execute RESPUESTASGENERICAS('Funcionamiento local');
 -- deberia dar al fondo a la derecha y juan
 
-
 -- coso 5
-CREATE OR REPLACE PROCEDURE cosa5
+CREATE OR REPLACE PROCEDURE ACTUALIZAR_ESPECIALIDADES (mes NUMBER default EXTRACT(MONTH FROM (sys_extract_utc(systimestamp))), anio number default EXTRACT(YEAR FROM (sys_extract_utc(systimestamp))))
 IS
   count_especialidades NUMBER;
   BEGIN
@@ -556,11 +584,10 @@ IS
         JOIN CONSULTA C ON R.ID = C.ID_RESPUESTA
         JOIN TIPO_CONSULTA TC ON C.ID_TIPO_CONSULTA = TC.ID
         JOIN ESPECIALIDAD E ON TC.ID_ESPECIALIDAD = E.ID
-      WHERE EXTRACT(MONTH FROM C.FECHA_RESOLUCION) = 11
-            AND EXTRACT(YEAR FROM C.FECHA_RESOLUCION) = 2017
-      HAVING COUNT(R.ID) > 1
+      WHERE EXTRACT(MONTH FROM C.FECHA_RESOLUCION) = mes
+            AND EXTRACT(YEAR FROM C.FECHA_RESOLUCION) = anio
+      HAVING COUNT(R.ID) > 20
       GROUP BY R.DOCUMENTO_FUNCIONARIO, C.ID_TIPO_CONSULTA, E.ID;
-
 
     BEGIN
       FOR row IN c1
@@ -570,7 +597,7 @@ IS
         FROM FUNCIONARIO_ESPECIALIDAD
         WHERE ID_ESPECIALIDAD = row.ESPECIALIDAD
               AND DOCUMENTO_FUNCIONARIO = row.DOCUMENTO_FUNCIONARIO;
-        IF count_especialidades < 1
+        IF count_especialidades < 20
         THEN
           INSERT INTO FUNCIONARIO_ESPECIALIDAD VALUES (row.DOCUMENTO_FUNCIONARIO, row.ESPECIALIDAD);
         END IF;
