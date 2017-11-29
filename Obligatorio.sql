@@ -362,37 +362,50 @@ INSERT INTO FUNCIONARIO_ESPECIALIDAD (DOCUMENTO_FUNCIONARIO, ID_ESPECIALIDAD) VA
 
 --- PROCEDIMIENTOS
 
---- UNO
-
 -- UNO
 
-DROP TABLE IDS_PRODUCTOS_RESPUESTA_GENERICA;
-CREATE TABLE IDS_PRODUCTOS_RESPUESTA_GENERICA (
+DROP TABLE IDS_PRODUCTOS_RESP_GEN;
+CREATE TABLE IDS_PRODUCTOS_RESP_GEN (
   ID_PRODUCTO NUMBER(10) CONSTRAINT ID_PRODUCTO_FK REFERENCES PRODUCTO
 );
 
-CREATE OR REPLACE PROCEDURE GenerarRespuestaGenerica(id_tipo_consulta IN NUMBER, detalle_consulta in VARCHAR, id_respuesta IN NUMBER, doc_funcionario IN NUMBER)
+INSERT INTO PRODUCTO (CODIGO, NOMBRE, DESCRIPCION) VALUES (111, 'A', 'Producto A');
+INSERT INTO PRODUCTO (CODIGO, NOMBRE, DESCRIPCION) VALUES (222, 'B', 'Producto B');
+
+INSERT INTO IDS_PRODUCTOS_RESP_GEN (ID_PRODUCTO) VALUES (111);
+INSERT INTO IDS_PRODUCTOS_RESP_GEN (ID_PRODUCTO) VALUES (222);
+
+CREATE OR REPLACE PROCEDURE GenerarRespuestaGenerica(id_tipo_cons IN NUMBER, -- 1
+                                                     detalle_consulta in VARCHAR,
+                                                     respuesta_ofrecida IN VARCHAR,
+                                                     doc_funcionario IN NUMBER, -- 47442944
+                                                     rut_cliente IN NUMBER, -- '1234567891011'
+                                                     via_comunicacion in VARCHAR, -- Personal
+                                                     tiempo_de_comunicacion in NUMBER) -- 20
 IS
-  detalle_respuesta VARCHAR(50);
+  id_nueva_consulta NUMBER;
+  id_nueva_respuesta NUMBER;
   BEGIN
+    DECLARE CURSOR cursor_productos IS
+      SELECT ID_PRODUCTO
+      FROM IDS_PRODUCTOS_RESP_GEN;
 
     BEGIN
-      SELECT TEXTO
-      INTO detalle_respuesta
-      FROM RESPUESTA
-      WHERE ID = id_respuesta;
-    EXCEPTION
-      WHEN NO_DATA_FOUND THEN
-      detalle_respuesta := NULL;
-      DBMS_OUTPUT.PUT_LINE('No se encontro la respuesta buscada');
+      INSERT INTO RESPUESTA (DOCUMENTO_FUNCIONARIO, TEXTO, ESTADO)
+      VALUES (doc_funcionario, respuesta_ofrecida, 'Pendiente de revision')
+      RETURNING ID into id_nueva_respuesta;
+
+      INSERT INTO CONSULTA (ID_TIPO_CONSULTA, RUT_EMPRESA, DETALLE, VIA_DE_CONTACTO, ID_RESPUESTA, FECHA_CREACION, FECHA_RESOLUCION, TIEMPO_DE_COMUNICACION_MINUTOS)
+      VALUES (id_tipo_cons, rut_cliente, detalle_consulta, via_comunicacion, id_nueva_respuesta, sysdate, sysdate, tiempo_de_comunicacion)
+      RETURNING ID into id_nueva_consulta;
+
+      FOR producto IN cursor_productos
+      LOOP
+        INSERT INTO CONSULTA_PRODUCTO (ID_CONSULTA, CODIGO_PRODUCTO) VALUES (id_nueva_consulta, producto.ID_PRODUCTO);
+      END LOOP;
+
+      COMMIT;
     END;
-
-    IF detalle_respuesta != NULL
-    THEN
-      INSERT INTO RESPUESTA (DOCUMENTO_FUNCIONARIO, TEXTO, ESTADO) VALUES (doc_funcionario, detalle_respuesta, 'Pendiente de revision');
-    END IF;
-
-    COMMIT;
   END;
 
 --- NAMBER CHU
