@@ -287,6 +287,32 @@ FOR EACH ROW
   END;
   
   
+  ---test
+  UPDATE consulta
+SET id_respuesta = 6
+WHERE id = (SELECT max(id)
+            FROM consulta);
+
+INSERT INTO especialidad (descripcion) VALUES ('Tecnica');
+
+INSERT INTO TIPO_CONSULTA (descripcion, id_especialidad) VALUES ('Muy tecnica', (SELECT max(id)
+                                                                                 FROM especialidad));
+
+SELECT *
+FROM CONSULTA;
+
+INSERT INTO consulta (id_tipo_consulta, rut_empresa, detalle, id_respuesta) VALUES ((SELECT max(id)
+                                                                                     FROM tipo_consulta), 1234567891011,
+                                                                                    '¿Donde?', 7);
+
+INSERT INTO respuesta (documento_funcionario, texto) VALUES (47442944, 'Anda');
+
+INSERT INTO consulta (id_tipo_consulta, rut_empresa, detalle, id_respuesta) VALUES ((SELECT max(id)
+                                                                                     FROM tipo_consulta), 1234567891011,
+                                                                                    '¿Donde?', 6);
+---trigger
+  
+  
 CREATE OR REPLACE TRIGGER RESPUESTA_ESPECIALIDAD_UNICA
 BEFORE INSERT OR UPDATE ON CONSULTA
 FOR EACH ROW
@@ -442,16 +468,19 @@ IS
     DECLARE CURSOR c1 IS
       SELECT ID
       FROM CONSULTA
-      WHERE ID_RESPUESTA IS NULL AND
-            EXTRACT(DAY FROM (sys_extract_utc(systimestamp) - FECHA_CREACION)) >= 1;
-
+      WHERE ID_RESPUESTA IS NULL
+        AND EXTRACT(DAY FROM (sys_extract_utc(systimestamp) - FECHA_CREACION)) >= 1
+        AND ID NOT IN (SELECT ID_CONSULTA FROM INCIDENTE);
     BEGIN
       FOR id_consulta_t IN c1
       LOOP
         INSERT INTO INCIDENTE (ID_CONSULTA, ESTADO) VALUES (id_consulta_t.ID, 'Pendiente');
+        COMMIT;
       END LOOP;
 
-      COMMIT;
+      EXCEPTION
+      WHEN others THEN
+      dbms_output.put_line('Error insertando incidente!');
     END;
   END;
 
@@ -563,6 +592,9 @@ IS
         DBMS_OUTPUT.PUT_LINE(funcionario_cursor.NOMBRE);
         DBMS_OUTPUT.PUT_LINE('----------------------------------------------');
       END LOOP;
+	  
+	  DELETE FROM PALABRA_CLAVE_PROCEDIMIENTO;
+	  COMMIT;
     END;
   END;
 -- test
@@ -596,7 +628,7 @@ IS
         FROM FUNCIONARIO_ESPECIALIDAD
         WHERE ID_ESPECIALIDAD = row.ESPECIALIDAD
               AND DOCUMENTO_FUNCIONARIO = row.DOCUMENTO_FUNCIONARIO;
-        IF count_especialidades < 20
+        IF count_especialidades < 1
         THEN
           INSERT INTO FUNCIONARIO_ESPECIALIDAD VALUES (row.DOCUMENTO_FUNCIONARIO, row.ESPECIALIDAD);
         END IF;
