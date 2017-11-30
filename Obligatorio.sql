@@ -477,10 +477,6 @@ IS
         INSERT INTO INCIDENTE (ID_CONSULTA, ESTADO) VALUES (id_consulta_t.ID, 'Pendiente');
         COMMIT;
       END LOOP;
-
-      EXCEPTION
-      WHEN others THEN
-      dbms_output.put_line('Error insertando incidente!');
     END;
   END;
 
