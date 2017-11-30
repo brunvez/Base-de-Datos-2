@@ -139,7 +139,7 @@ CREATE TABLE RESPUESTA (
   ID                    NUMBER(10)   NOT NULL PRIMARY KEY,
   DOCUMENTO_FUNCIONARIO INTEGER      NOT NULL CONSTRAINT RESPUESTA_TO_FUNCIONARIO_FK REFERENCES FUNCIONARIO,
   TEXTO                 VARCHAR2(50) NOT NULL,
-  ESTADO                VARCHAR2(20) CONSTRAINT RESPUESTA_SIMPLE_ESTADO CHECK (ESTADO IN
+  ESTADO                VARCHAR2(50) CONSTRAINT RESPUESTA_SIMPLE_ESTADO CHECK (ESTADO IN
                                                                                ('Pendiente de revision', 'Rechazada', 'Revisada Ok'))
 
 );
@@ -286,6 +286,34 @@ FOR EACH ROW
       raise_application_error(-20001, 'Incidentes deben ser consultas con mas de 24 horas de antigüedad.');
     END IF;
   END;
+  
+  
+CREATE OR REPLACE TRIGGER RESPUESTA_ESPECIALIDAD_UNICA
+BEFORE INSERT OR UPDATE ON CONSULTA
+FOR EACH ROW
+  DECLARE
+    respuesta_especialidad NUMBER(10);
+    consulta_especialidad  NUMBER(10);
+    num                    NUMBER;
+  BEGIN
+    IF :NEW.ID_RESPUESTA IS NOT NULL
+    THEN
+      SELECT COUNT(DISTINCT ID_ESPECIALIDAD)
+      INTO num
+      FROM (SELECT id_especialidad
+            FROM TIPO_CONSULTA
+            WHERE :new.ID_TIPO_CONSULTA = TIPO_CONSULTA.ID
+            UNION SELECT TIPO_CONSULTA.ID_ESPECIALIDAD
+                  FROM RESPUESTA
+                    JOIN CONSULTA ON RESPUESTA.ID = CONSULTA.ID_RESPUESTA
+                    JOIN TIPO_CONSULTA ON CONSULTA.ID_TIPO_CONSULTA = TIPO_CONSULTA.ID
+                  WHERE RESPUESTA.ID = :NEW.ID_RESPUESTA);
+      IF num > 1
+      THEN
+        raise_application_error(-20001, 'Respuestas deben tener la misma especialidad');
+      END IF;
+    END IF;
+  END;
 
 --  DATOS DE PRUEBA
 
@@ -360,7 +388,54 @@ WHERE ID_RESPUESTA = (SELECT MAX(ID)
 INSERT INTO FUNCIONARIO_ESPECIALIDAD (DOCUMENTO_FUNCIONARIO, ID_ESPECIALIDAD) VALUES (47442944, (SELECT MAX(ID)
                                                                                                  FROM ESPECIALIDAD));
 
---- PRODECIMIENTOS
+--- PROCEDIMIENTOS
+
+-- UNO
+
+DROP TABLE IDS_PRODUCTOS_RESP_GEN;
+CREATE TABLE IDS_PRODUCTOS_RESP_GEN (
+  ID_PRODUCTO NUMBER(10) CONSTRAINT ID_PRODUCTO_FK REFERENCES PRODUCTO
+);
+
+INSERT INTO PRODUCTO (CODIGO, NOMBRE, DESCRIPCION) VALUES (111, 'A', 'Producto A');
+INSERT INTO PRODUCTO (CODIGO, NOMBRE, DESCRIPCION) VALUES (222, 'B', 'Producto B');
+
+INSERT INTO IDS_PRODUCTOS_RESP_GEN (ID_PRODUCTO) VALUES (111);
+INSERT INTO IDS_PRODUCTOS_RESP_GEN (ID_PRODUCTO) VALUES (222);
+
+CREATE OR REPLACE PROCEDURE GenerarRespuestaGenerica(id_tipo_cons IN NUMBER, -- 1
+                                                     detalle_consulta in VARCHAR,
+                                                     respuesta_ofrecida IN VARCHAR,
+                                                     doc_funcionario IN NUMBER, -- 47442944
+                                                     rut_cliente IN NUMBER, -- '1234567891011'
+                                                     via_comunicacion in VARCHAR, -- Personal
+                                                     tiempo_de_comunicacion in NUMBER) -- 20
+IS
+  id_nueva_consulta NUMBER;
+  id_nueva_respuesta NUMBER;
+  BEGIN
+    DECLARE CURSOR cursor_productos IS
+      SELECT ID_PRODUCTO
+      FROM IDS_PRODUCTOS_RESP_GEN;
+
+    BEGIN
+      INSERT INTO RESPUESTA (DOCUMENTO_FUNCIONARIO, TEXTO, ESTADO)
+      VALUES (doc_funcionario, respuesta_ofrecida, 'Pendiente de revision')
+      RETURNING ID into id_nueva_respuesta;
+
+      INSERT INTO CONSULTA (ID_TIPO_CONSULTA, RUT_EMPRESA, DETALLE, VIA_DE_CONTACTO, ID_RESPUESTA, FECHA_CREACION, FECHA_RESOLUCION, TIEMPO_DE_COMUNICACION_MINUTOS)
+      VALUES (id_tipo_cons, rut_cliente, detalle_consulta, via_comunicacion, id_nueva_respuesta, sysdate, sysdate, tiempo_de_comunicacion)
+      RETURNING ID into id_nueva_consulta;
+
+      FOR producto IN cursor_productos
+      LOOP
+        INSERT INTO CONSULTA_PRODUCTO (ID_CONSULTA, CODIGO_PRODUCTO) VALUES (id_nueva_consulta, producto.ID_PRODUCTO);
+      END LOOP;
+
+      COMMIT;
+    END;
+  END;
+
 --- NAMBER CHU
 CREATE OR REPLACE PROCEDURE GenerarIncidentes
 IS
@@ -397,7 +472,7 @@ CREATE OR REPLACE PROCEDURE RevisarRespuestaGenerica(id_respuesta_in IN NUMBER, 
     BEGIN
       UPDATE RESPUESTA
       SET RESPUESTA.ESTADO = estado_deseado
-      WHERE RESPUESTA.ID = id_respuesta_in AND RESPUESTA.ID_ESPECIALIDAD IS NOT NULL;
+      WHERE RESPUESTA.ID = id_respuesta_in AND RESPUESTA.ESTADO IS NOT NULL;
 
       DELETE FROM PALABRA_CLAVE_RESPUESTA
       WHERE ID_RESPUESTA = id_respuesta_in;
@@ -461,6 +536,7 @@ IS
           JOIN PALABRA_CLAVE_RESPUESTA PCR ON R.ID = PCR.ID_RESPUESTA
           JOIN PALABRA_CLAVE PC ON PCR.ID_PALABRA_CLAVE = PC.ID
         WHERE TC.DESCRIPCION = tipo_de_consulta
+				AND R.ESTADO = 'Revisada Ok'
               AND PC.PALABRA IN (SELECT PALABRA
                                  FROM PALABRA_CLAVE_PROCEDIMIENTO
                                    JOIN PALABRA_CLAVE
@@ -491,12 +567,11 @@ IS
     END;
   END;
 -- test
-execute RESPUESTASGENERICAS('Funcionamiento local');
+-- execute RESPUESTASGENERICAS('Funcionamiento local');
 -- deberia dar al fondo a la derecha y juan
 
-
 -- coso 5
-CREATE OR REPLACE PROCEDURE cosa5
+CREATE OR REPLACE PROCEDURE ACTUALIZAR_ESPECIALIDADES (mes NUMBER default EXTRACT(MONTH FROM (sys_extract_utc(systimestamp))), anio number default EXTRACT(YEAR FROM (sys_extract_utc(systimestamp))))
 IS
   count_especialidades NUMBER;
   BEGIN
@@ -509,11 +584,10 @@ IS
         JOIN CONSULTA C ON R.ID = C.ID_RESPUESTA
         JOIN TIPO_CONSULTA TC ON C.ID_TIPO_CONSULTA = TC.ID
         JOIN ESPECIALIDAD E ON TC.ID_ESPECIALIDAD = E.ID
-      WHERE EXTRACT(MONTH FROM C.FECHA_RESOLUCION) = 11
-            AND EXTRACT(YEAR FROM C.FECHA_RESOLUCION) = 2017
-      HAVING COUNT(R.ID) > 1
+      WHERE EXTRACT(MONTH FROM C.FECHA_RESOLUCION) = mes
+            AND EXTRACT(YEAR FROM C.FECHA_RESOLUCION) = anio
+      HAVING COUNT(R.ID) > 20
       GROUP BY R.DOCUMENTO_FUNCIONARIO, C.ID_TIPO_CONSULTA, E.ID;
-
 
     BEGIN
       FOR row IN c1
@@ -523,7 +597,7 @@ IS
         FROM FUNCIONARIO_ESPECIALIDAD
         WHERE ID_ESPECIALIDAD = row.ESPECIALIDAD
               AND DOCUMENTO_FUNCIONARIO = row.DOCUMENTO_FUNCIONARIO;
-        IF count_especialidades < 1
+        IF count_especialidades < 20
         THEN
           INSERT INTO FUNCIONARIO_ESPECIALIDAD VALUES (row.DOCUMENTO_FUNCIONARIO, row.ESPECIALIDAD);
         END IF;
