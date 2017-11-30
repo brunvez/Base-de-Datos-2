@@ -1,4 +1,3 @@
-
 -- Tipos de restricciones: dominio, referencia, negocio y clave -> como las implementamos -> capturas de pantalla
 
 -- NOTA pa la segunda parte: para saber en que estado estan los procedimientos va guardando en una tabla y si arranca de nuevo chequea
@@ -441,10 +440,10 @@ CREATE OR REPLACE PROCEDURE GenerarIncidentes
 IS
   BEGIN
     DECLARE CURSOR c1 IS
-        SELECT ID
-        FROM CONSULTA
-        WHERE ID_RESPUESTA IS NULL AND
-              EXTRACT(DAY FROM (sys_extract_utc(systimestamp) - FECHA_CREACION)) >= 1;
+      SELECT ID
+      FROM CONSULTA
+      WHERE ID_RESPUESTA IS NULL AND
+            EXTRACT(DAY FROM (sys_extract_utc(systimestamp) - FECHA_CREACION)) >= 1;
 
     BEGIN
       FOR id_consulta_t IN c1
@@ -605,3 +604,205 @@ IS
       COMMIT;
     END;
   END;
+
+DROP TABLE CACHE_INFO_FUNCIONARIOS;
+CREATE TABLE CACHE_INFO_FUNCIONARIOS (
+  MES       NUMBER NOT NULL,
+  ANO       NUMBER NOT NULL,
+  RESULTADO VARCHAR(2500),
+  PRIMARY KEY (MES, ANO)
+);
+
+DROP TABLE ULTIMO_FUNCIONARIO;
+CREATE TABLE ULTIMO_FUNCIONARIO (
+  DOCUMENTO_FUNCIONARIO NUMBER NOT NULL CONSTRAINT DOCUMENTO_FUN_ULTIMO_FUN REFERENCES FUNCIONARIO,
+  MES                   NUMBER NOT NULL,
+  ANO                   NUMBER NOT NULL,
+  PRIMARY KEY (DOCUMENTO_FUNCIONARIO, MES, ANO)
+);
+
+SELECT *
+FROM CACHE_INFO_FUNCIONARIOS;
+
+CREATE OR REPLACE PROCEDURE InfoFuncionarios(mes_param NUMBER DEFAULT NULL, ano_param NUMBER DEFAULT NULL) IS
+  mes_comprobado         NUMBER;
+  ano_comprobado         NUMBER;
+  texto_resultado        VARCHAR(2500);
+  hay_cache              NUMBER;
+  ultimo_funcionario_doc NUMBER;
+  BEGIN
+    IF mes_param IS NULL OR ano_param IS NULL
+    THEN
+      mes_comprobado := EXTRACT(MONTH FROM add_months(sysdate, -1));
+      ano_comprobado := EXTRACT(YEAR FROM add_months(sysdate, -1));
+    ELSE
+      mes_comprobado := mes_param;
+      ano_comprobado := ano_param;
+    END IF;
+
+    SELECT COUNT(*)
+    INTO hay_cache
+    FROM
+      CACHE_INFO_FUNCIONARIOS
+    WHERE CACHE_INFO_FUNCIONARIOS.MES = mes_comprobado AND CACHE_INFO_FUNCIONARIOS.ANO = ano_comprobado;
+    SELECT COALESCE(MAX(ULTIMO_FUNCIONARIO.DOCUMENTO_FUNCIONARIO), 0)
+    INTO ultimo_funcionario_doc
+    FROM ULTIMO_FUNCIONARIO
+    WHERE ULTIMO_FUNCIONARIO.MES = mes_comprobado AND ULTIMO_FUNCIONARIO.ANO = ano_comprobado;
+    IF hay_cache = 0 OR ultimo_funcionario_doc != 0
+    THEN
+      IF ultimo_funcionario_doc = 0
+      THEN
+        ActualizarCacheFuncionarios(mes_comprobado, ano_comprobado, mes_comprobado || '/' || ano_comprobado);
+      END IF;
+      ImprimirFuncionarios(mes_comprobado, ano_comprobado, ultimo_funcionario_doc);
+    END IF;
+    SELECT RESULTADO
+    INTO texto_resultado
+    FROM CACHE_INFO_FUNCIONARIOS
+    WHERE CACHE_INFO_FUNCIONARIOS.MES = mes_comprobado AND CACHE_INFO_FUNCIONARIOS.ANO = ano_comprobado;
+    DBMS_OUTPUT.PUT_LINE(texto_resultado);
+    DELETE FROM ULTIMO_FUNCIONARIO
+    WHERE ULTIMO_FUNCIONARIO.MES = mes_comprobado AND ULTIMO_FUNCIONARIO.ANO = ano_comprobado;
+    COMMIT;
+  END;
+
+CREATE OR REPLACE PROCEDURE ImprimirFuncionarios(mes_param       NUMBER, ano_param NUMBER,
+                                                 documento_desde NUMBER DEFAULT 0) IS
+  cantidad_respuestas NUMBER;
+  promedio_resolucion NUMBER;
+  BEGIN
+    DECLARE CURSOR c_funcionarios IS SELECT
+                                       FUNCIONARIO.DOCUMENTO,
+                                       FUNCIONARIO.NOMBRE,
+                                       FUNCIONARIO.FECHA_INGRESO,
+                                       LISTAGG(ESPECIALIDAD.DESCRIPCION, ', ')
+                                       WITHIN GROUP (
+                                         ORDER BY ESPECIALIDAD.DESCRIPCION) "ESPECIALIDADES_TEXTO"
+                                     FROM FUNCIONARIO
+                                       JOIN FUNCIONARIO_ESPECIALIDAD
+                                         ON FUNCIONARIO.DOCUMENTO = FUNCIONARIO_ESPECIALIDAD.DOCUMENTO_FUNCIONARIO
+                                       JOIN ESPECIALIDAD ON FUNCIONARIO_ESPECIALIDAD.ID_ESPECIALIDAD = ESPECIALIDAD.ID
+                                     WHERE FUNCIONARIO.DOCUMENTO > documento_desde
+                                     GROUP BY DOCUMENTO, FUNCIONARIO.NOMBRE, FUNCIONARIO.FECHA_INGRESO
+                                     ORDER BY FUNCIONARIO.DOCUMENTO;
+    BEGIN
+      FOR row_funcionario IN c_funcionarios
+      LOOP
+
+        ActualizarCacheFuncionarios(mes_param, ano_param,
+                                    'Funcionario: ' || row_funcionario.NOMBRE || ' Fecha de ingreso: ' ||
+                                    row_funcionario.FECHA_INGRESO ||
+                                    ' Especialidades: ' || row_funcionario.ESPECIALIDADES_TEXTO);
+        ActualizarCacheFuncionarios(mes_param, ano_param,
+                                    '-----------------------------------------------------------------------');
+
+        DECLARE CURSOR c_tipos_de_consulta IS SELECT
+                                                TIPO_CONSULTA.ID,
+                                                TIPO_CONSULTA.DESCRIPCION
+                                              FROM TIPO_CONSULTA
+                                                JOIN CONSULTA ON TIPO_CONSULTA.ID = CONSULTA.ID_TIPO_CONSULTA
+                                                JOIN RESPUESTA ON CONSULTA.ID_RESPUESTA = RESPUESTA.ID
+                                              WHERE RESPUESTA.DOCUMENTO_FUNCIONARIO = row_funcionario.DOCUMENTO
+                                                    AND CONSULTA.FECHA_RESOLUCION IS NOT NULL
+                                                    AND EXTRACT(MONTH FROM CONSULTA.FECHA_RESOLUCION) = mes_param AND
+                                                    EXTRACT(YEAR FROM CONSULTA.FECHA_RESOLUCION) = ano_param
+                                              GROUP BY TIPO_CONSULTA.ID, TIPO_CONSULTA.DESCRIPCION;
+        BEGIN
+          FOR row_tipo_consulta IN c_tipos_de_consulta
+          LOOP
+            ActualizarCacheFuncionarios(mes_param, ano_param, 'Tipo de Consulta: ' || row_tipo_consulta.DESCRIPCION);
+            DECLARE CURSOR c_clientes IS SELECT
+                                           EMPRESA.NOMBRE_FANTASIA,
+                                           SUM(EXTRACT(MINUTE FROM (CONSULTA.FECHA_RESOLUCION -
+                                                                    CONSULTA.FECHA_CREACION))) "TIEMPO_RESOLUCION"
+                                         FROM EMPRESA
+                                           JOIN CONSULTA ON EMPRESA.RUT = CONSULTA.RUT_EMPRESA
+                                           JOIN RESPUESTA ON CONSULTA.ID_RESPUESTA = RESPUESTA.ID
+                                         WHERE CONSULTA.ID_TIPO_CONSULTA = row_tipo_consulta.ID AND
+                                               RESPUESTA.DOCUMENTO_FUNCIONARIO = row_funcionario.DOCUMENTO
+                                               AND CONSULTA.FECHA_RESOLUCION IS NOT NULL
+                                               AND EXTRACT(MONTH FROM CONSULTA.FECHA_RESOLUCION) = mes_param AND
+                                               EXTRACT(YEAR FROM CONSULTA.FECHA_RESOLUCION) = ano_param
+                                         GROUP BY EMPRESA.NOMBRE_FANTASIA;
+            BEGIN
+              FOR row_cliente IN c_clientes
+              LOOP
+                ActualizarCacheFuncionarios(mes_param, ano_param,
+                                            row_cliente.NOMBRE_FANTASIA || '                 ' ||
+                                            row_cliente.TIEMPO_RESOLUCION);
+              END LOOP;
+              SELECT COUNT(RESPUESTA.ID)
+              INTO cantidad_respuestas
+              FROM RESPUESTA
+                JOIN CONSULTA ON RESPUESTA.ID = CONSULTA.ID_RESPUESTA
+              WHERE RESPUESTA.DOCUMENTO_FUNCIONARIO = row_funcionario.DOCUMENTO AND
+                    CONSULTA.ID_TIPO_CONSULTA = row_tipo_consulta.ID
+                    AND CONSULTA.FECHA_RESOLUCION IS NOT NULL
+                    AND EXTRACT(MONTH FROM CONSULTA.FECHA_RESOLUCION) = mes_param AND
+                    EXTRACT(YEAR FROM CONSULTA.FECHA_RESOLUCION) = ano_param;
+              ActualizarCacheFuncionarios(mes_param, ano_param, 'Cantidad:        ' || cantidad_respuestas);
+              SELECT AVG(EXTRACT(MINUTE FROM (CONSULTA.FECHA_RESOLUCION -
+                                              CONSULTA.FECHA_CREACION)))
+              INTO promedio_resolucion
+              FROM CONSULTA
+                JOIN RESPUESTA ON CONSULTA.ID_RESPUESTA = RESPUESTA.ID
+              WHERE RESPUESTA.DOCUMENTO_FUNCIONARIO = row_funcionario.DOCUMENTO AND
+                    CONSULTA.ID_TIPO_CONSULTA = row_tipo_consulta.ID
+                    AND CONSULTA.FECHA_RESOLUCION IS NOT NULL
+                    AND EXTRACT(MONTH FROM CONSULTA.FECHA_RESOLUCION) = mes_param AND
+                    EXTRACT(YEAR FROM CONSULTA.FECHA_RESOLUCION) = ano_param;
+              ActualizarCacheFuncionarios(mes_param, ano_param, 'Tiempo promedio: ' || promedio_resolucion);
+              ActualizarCacheFuncionarios(mes_param, ano_param, '----------------------------');
+            END;
+          END LOOP;
+        END;
+        INSERT INTO ULTIMO_FUNCIONARIO (DOCUMENTO_FUNCIONARIO, ANO, MES)
+        VALUES (row_funcionario.DOCUMENTO, ano, mes_param);
+        COMMIT;
+      END LOOP;
+    END;
+  END;
+
+CREATE OR REPLACE PROCEDURE ActualizarCacheFuncionarios(mes_param NUMBER, ano_param NUMBER, texto VARCHAR) IS
+  existe_cache NUMBER;
+  BEGIN
+    SELECT COUNT(*)
+    INTO existe_cache
+    FROM CACHE_INFO_FUNCIONARIOS
+    WHERE CACHE_INFO_FUNCIONARIOS.ANO = ano_param AND CACHE_INFO_FUNCIONARIOS.MES = mes_param;
+
+    IF existe_cache = 0
+    THEN
+      INSERT INTO CACHE_INFO_FUNCIONARIOS (MES, ANO, RESULTADO)
+      VALUES (mes_param, ano_param, texto || CHR(13) || CHR(10)); -- \r\n
+    ELSE
+      UPDATE CACHE_INFO_FUNCIONARIOS
+      SET CACHE_INFO_FUNCIONARIOS.RESULTADO = CONCAT(CACHE_INFO_FUNCIONARIOS.RESULTADO, texto || CHR(13) || CHR(10))
+      WHERE CACHE_INFO_FUNCIONARIOS.ANO = ano_param AND CACHE_INFO_FUNCIONARIOS.MES = mes_param;
+    END IF;
+  END;
+
+SELECT *
+FROM CACHE_INFO_FUNCIONARIOS;
+SELECT *
+FROM ULTIMO_FUNCIONARIO;
+
+DELETE FROM CACHE_INFO_FUNCIONARIOS;
+DELETE FROM ULTIMO_FUNCIONARIO;
+
+
+INSERT INTO FUNCIONARIO (DOCUMENTO, TIPO, PAIS, DIRECCION, NOMBRE, FECHA_NACIMIENTO, FECHA_INGRESO)
+VALUES (48015536, 'Operario', 'Uruguay', '-', 'Bruno', sysdate, sysdate);
+
+INSERT INTO RESPUESTA (DOCUMENTO_FUNCIONARIO, TEXTO) VALUES (48015536, 'coso coso');
+SELECT *
+FROM RESPUESTA;
+
+INSERT INTO FUNCIONARIO_ESPECIALIDAD (DOCUMENTO_FUNCIONARIO, ID_ESPECIALIDAD) VALUES (48015536, 2)
+SELECT *
+FROM ESPECIALIDAD;
+
+INSERT INTO CONSULTA (ID_TIPO_CONSULTA, RUT_EMPRESA, DETALLE, ID_RESPUESTA)
+VALUES ((SELECT MAX(ID)
+         FROM TIPO_CONSULTA), '1234567891011', '¿COSO?', 4);
