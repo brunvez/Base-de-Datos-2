@@ -309,79 +309,6 @@ FOR EACH ROW
     END IF;
   END;
 /
---  DATOS DE PRUEBA
-
-ALTER SESSION SET NLS_DATE_FORMAT = 'DD/MM/YYYY';
-ALTER SESSION SET NLS_TIMESTAMP_FORMAT = 'DD/MM/YYYY';
-INSERT INTO EMPRESA VALUES ('1234567891011', 'Conaprole', 'info@conaprole.com', 'Av. Italia 1245', 'Jeremias', NULL);
-INSERT INTO PRODUCTO VALUES (555, 'Caja de Carton', '10x20x50 - Interior de aluminio.');
-INSERT INTO EMPRESA_PRODUCTO VALUES ('1234567891011', 555);
-INSERT INTO ESPECIALIDAD (DESCRIPCION) VALUES ('Funcional');
-INSERT INTO TIPO_CONSULTA (DESCRIPCION, ID_ESPECIALIDAD) VALUES ('Generica', (SELECT MAX(ID)
-                                                                              FROM ESPECIALIDAD));
-
-INSERT INTO CONSULTA (ID_TIPO_CONSULTA, RUT_EMPRESA, DETALLE)
-VALUES ((SELECT MAX(ID)
-         FROM TIPO_CONSULTA), '1234567891011', '¿Cuanto salen 50 cajas de carton?');
-INSERT INTO FUNCIONARIO (DOCUMENTO, TIPO, PAIS, DIRECCION, NOMBRE, FECHA_NACIMIENTO, FECHA_INGRESO)
-VALUES (47442944, 'Operario', 'Uruguay', '-', 'Juan', '02/09/1996', '08/08/2016');
-INSERT INTO RESPUESTA (DOCUMENTO_FUNCIONARIO, TEXTO) VALUES (47442944, '50 pe');
-UPDATE CONSULTA
-SET ID_RESPUESTA = (SELECT MAX(ID)
-                    FROM RESPUESTA)
-WHERE ID = (SELECT MAX(ID)
-            FROM CONSULTA);
-
-INSERT INTO CONSULTA (ID_TIPO_CONSULTA, RUT_EMPRESA, DETALLE)
-VALUES ((SELECT MAX(ID)
-         FROM TIPO_CONSULTA), '1234567891011', '¿Cuanto salen 50 MANZANAS?');
-INSERT INTO RESPUESTA (DOCUMENTO_FUNCIONARIO, TEXTO) VALUES (47442944, 'Mucho dinero');
-UPDATE CONSULTA
-SET ID_RESPUESTA = (SELECT MAX(ID)
-                    FROM RESPUESTA)
-WHERE ID = (SELECT MAX(ID)
-            FROM CONSULTA);
-
-INSERT INTO CONSULTA (ID_TIPO_CONSULTA, RUT_EMPRESA, DETALLE)
-VALUES ((SELECT MAX(ID)
-         FROM TIPO_CONSULTA), '1234567891011', '¿En donde esta el baño?');
-UPDATE CONSULTA
-SET FECHA_CREACION = '15-10-2017'
-WHERE ID = (SELECT MAX(ID)
-            FROM CONSULTA);
-INSERT INTO INCIDENTE (ID_CONSULTA, ESTADO) VALUES ((SELECT MAX(ID)
-                                                     FROM CONSULTA), 'Pendiente');
-INSERT INTO RESPUESTA (DOCUMENTO_FUNCIONARIO, TEXTO) VALUES (47442944, 'Al fondo a la derecha');
-UPDATE CONSULTA
-SET ID_RESPUESTA = (SELECT MAX(ID)
-                    FROM RESPUESTA)
-WHERE ID = (SELECT MAX(ID)
-            FROM CONSULTA);
-
-INSERT INTO CONSULTA (ID_TIPO_CONSULTA, RUT_EMPRESA, DETALLE)
-VALUES ((SELECT MAX(ID)
-         FROM TIPO_CONSULTA), '1234567891011', '¿De que color es la pared?');
-UPDATE CONSULTA
-SET FECHA_CREACION = '14-10-2017'
-WHERE ID = (SELECT MAX(ID)
-            FROM CONSULTA);
-INSERT INTO INCIDENTE (ID_CONSULTA, ESTADO) VALUES ((SELECT MAX(ID)
-                                                     FROM CONSULTA), 'Pendiente');
-
-INSERT INTO PALABRA_CLAVE (PALABRA) VALUES ('Baño');
-
-INSERT INTO TIPO_CONSULTA (DESCRIPCION, ID_ESPECIALIDAD) VALUES ('Funcionamiento local', (SELECT MAX(ID)
-                                                                                          FROM ESPECIALIDAD));
-
-UPDATE CONSULTA
-SET ID_TIPO_CONSULTA = (SELECT MAX(ID)
-                        FROM TIPO_CONSULTA)
-WHERE ID_RESPUESTA = (SELECT MAX(ID)
-                      FROM RESPUESTA);
-
-INSERT INTO FUNCIONARIO_ESPECIALIDAD (DOCUMENTO_FUNCIONARIO, ID_ESPECIALIDAD) VALUES (47442944, (SELECT MAX(ID)
-                                                                                                 FROM ESPECIALIDAD));
-
 --- PROCEDIMIENTOS
 
 -- UNO
@@ -390,19 +317,13 @@ CREATE TABLE IDS_PRODUCTOS_RESP_GEN (
   ID_PRODUCTO NUMBER(10) CONSTRAINT ID_PRODUCTO_FK REFERENCES PRODUCTO
 );
 
-INSERT INTO PRODUCTO (CODIGO, NOMBRE, DESCRIPCION) VALUES (111, 'A', 'Producto A');
-INSERT INTO PRODUCTO (CODIGO, NOMBRE, DESCRIPCION) VALUES (222, 'B', 'Producto B');
-
-INSERT INTO IDS_PRODUCTOS_RESP_GEN (ID_PRODUCTO) VALUES (111);
-INSERT INTO IDS_PRODUCTOS_RESP_GEN (ID_PRODUCTO) VALUES (222);
-
-CREATE OR REPLACE PROCEDURE GenerarRespuestaGenerica(id_tipo_cons           IN NUMBER, -- 1
-                                                     detalle_consulta       IN VARCHAR,
-                                                     respuesta_ofrecida     IN VARCHAR,
-                                                     doc_funcionario        IN NUMBER, -- 47442944
-                                                     rut_cliente            IN NUMBER, -- '1234567891011'
-                                                     via_comunicacion       IN VARCHAR, -- Personal
-                                                     tiempo_de_comunicacion IN NUMBER) -- 20
+CREATE OR REPLACE PROCEDURE GenerarRespuestaGenerica(id_tipo_cons IN NUMBER,
+                                                     detalle_consulta in VARCHAR,
+                                                     respuesta_ofrecida IN VARCHAR,
+                                                     doc_funcionario IN NUMBER,
+                                                     rut_cliente IN NUMBER,
+                                                     via_comunicacion in VARCHAR,
+                                                     tiempo_de_comunicacion in NUMBER)
 IS
   id_nueva_consulta  NUMBER;
   id_nueva_respuesta NUMBER;
@@ -484,29 +405,6 @@ CREATE OR REPLACE PROCEDURE RevisarRespuestaGenerica(id_respuesta_in IN NUMBER, 
   END;
 
 -- CUATRO
-
-UPDATE RESPUESTA
-SET ESTADO = 'Revisada Ok'
-WHERE ID = (SELECT MAX(ID)
-            FROM RESPUESTA
-            WHERE ESTADO IS NULL);
-
-
-INSERT INTO PALABRA_CLAVE_RESPUESTA (ID_RESPUESTA, ID_PALABRA_CLAVE) VALUES ((SELECT MAX(ID)
-                                                                              FROM RESPUESTA
-                                                                              WHERE ESTADO = 'Revisada Ok'),
-                                                                             (SELECT MAX(ID)
-                                                                              FROM PALABRA_CLAVE));
-
-UPDATE CONSULTA
-SET ID_TIPO_CONSULTA = (SELECT MAX(ID)
-                        FROM TIPO_CONSULTA)
-WHERE ID_RESPUESTA = (SELECT MAX(ID)
-                      FROM RESPUESTA);
-					  
-INSERT INTO PALABRA_CLAVE_PROCEDIMIENTO VALUES((SELECT MAX(ID) FROM PALABRA_CLAVE));
-
--- CREACION DE TABLAS
 CREATE TABLE PALABRA_CLAVE_PROCEDIMIENTO (
   ID_PALABRA_CLAVE NUMBER(10) CONSTRAINT PALABRA_CLAVE_PROCEDIMIENTO_FK REFERENCES PALABRA_CLAVE
 );
