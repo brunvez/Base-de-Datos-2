@@ -1,9 +1,8 @@
--- Tipos de restricciones: dominio, referencia, negocio y clave -> como las implementamos -> capturas de pantalla
-
--- NOTA pa la segunda parte: para saber en que estado estan los procedimientos va guardando en una tabla y si arranca de nuevo chequea
-DROP PROCEDURE REVISARRESPUESTAGENERICA;
-DROP PROCEDURE RESPUESTASGENERICAS;
-DROP PROCEDURE GenerarIncidentes;
+DROP TABLE CACHE_INFO_FUNCIONARIOS;
+DROP TABLE ULTIMO_FUNCIONARIO;
+DROP TABLE PALABRA_CLAVE_PROCEDIMIENTO;
+DROP TABLE PALABRAS_CLAVE_PARA_GENERICA;
+DROP TABLE IDS_PRODUCTOS_RESP_GEN;
 DROP TRIGGER INCIDENTE_NO_LO_ES;
 DROP TRIGGER INCIDENTE_YA_RESUELTO;
 DROP TABLE INCIDENTE;
@@ -83,7 +82,7 @@ FOR EACH ROW
     INTO :new.id
     FROM dual;
   END;
-
+/
 -- TIPO DE CONSULTA
 
 CREATE TABLE TIPO_CONSULTA (
@@ -103,7 +102,7 @@ FOR EACH ROW
     INTO :new.id
     FROM dual;
   END;
-
+/
 -- FUNCIONARIO
 
 CREATE TABLE FUNCIONARIO (
@@ -138,10 +137,7 @@ CREATE TABLE RESPUESTA (
   ID                    NUMBER(10)   NOT NULL PRIMARY KEY,
   DOCUMENTO_FUNCIONARIO INTEGER      NOT NULL CONSTRAINT RESPUESTA_TO_FUNCIONARIO_FK REFERENCES FUNCIONARIO,
   TEXTO                 VARCHAR2(50) NOT NULL,
-  ESTADO                VARCHAR2(50) CONSTRAINT RESPUESTA_SIMPLE_ESTADO CHECK (ESTADO IN
-                                                                               ('Pendiente de revision', 'Rechazada', 'Revisada Ok'))
-
-);
+  ESTADO                VARCHAR2(50) CONSTRAINT RESPUESTA_SIMPLE_ESTADO CHECK (ESTADO IN ('Pendiente de revision', 'Rechazada', 'Revisada Ok')));
 
 CREATE SEQUENCE respuesta_id_seq START WITH 1;
 
@@ -154,7 +150,7 @@ FOR EACH ROW
     INTO :new.id
     FROM dual;
   END;
-
+/
 -- PALABRAS CLAVE RESPUESTA
 CREATE TABLE PALABRA_CLAVE (
   ID      NUMBER(10) PRIMARY KEY,
@@ -172,7 +168,7 @@ FOR EACH ROW
     INTO :new.id
     FROM dual;
   END;
-
+/
 -- N-N palabras clave de una respuesta
 
 CREATE TABLE PALABRA_CLAVE_RESPUESTA (
@@ -188,8 +184,7 @@ CREATE TABLE CONSULTA (
   ID_TIPO_CONSULTA               NUMBER(10)    NOT NULL CONSTRAINT CONS_TO_TIPO_CONS_FK REFERENCES TIPO_CONSULTA,
   RUT_EMPRESA                    INTEGER       NOT NULL CONSTRAINT CONSULTA_TO_EMPRESA_FK REFERENCES EMPRESA,
   DETALLE                        VARCHAR2(100) NOT NULL,
-  VIA_DE_CONTACTO                VARCHAR2(50) CONSTRAINT CONSULTA_CONTACTO CHECK (VIA_DE_CONTACTO IN
-                                                                                  ('Telefonica', 'Correo electronico', 'Personal')),
+  VIA_DE_CONTACTO                VARCHAR2(50) CONSTRAINT CONSULTA_CONTACTO CHECK (VIA_DE_CONTACTO IN ('Telefonica', 'Correo electronico', 'Personal')),
   ID_RESPUESTA                   NUMBER(10) CONSTRAINT CONSULTA_TO_RESP_FK REFERENCES RESPUESTA,
   FECHA_CREACION                 TIMESTAMP     NOT NULL,
   FECHA_RESOLUCION               TIMESTAMP,
@@ -207,14 +202,14 @@ FOR EACH ROW
     INTO :new.id
     FROM dual;
   END;
-
+/
 CREATE OR REPLACE TRIGGER FECHA_CREACION_CONSULTA
 BEFORE INSERT ON CONSULTA
 FOR EACH ROW
   BEGIN
     :NEW.FECHA_CREACION := sys_extract_utc(systimestamp);
   END;
-
+/
 CREATE OR REPLACE TRIGGER FECHA_RESPUESTA_CONSULTA
 BEFORE INSERT OR UPDATE ON CONSULTA
 FOR EACH ROW
@@ -224,7 +219,7 @@ FOR EACH ROW
       :NEW.FECHA_RESOLUCION := sys_extract_utc(systimestamp);
     END IF;
   END;
-
+/
 CREATE OR REPLACE TRIGGER RESPUESTA_INCIDENTE
 BEFORE UPDATE ON CONSULTA
 FOR EACH ROW
@@ -236,7 +231,7 @@ FOR EACH ROW
       WHERE ID_CONSULTA = :NEW.ID;
     END IF;
   END;
-
+/
 -- N-N CONSULTA - PRODUCTO
 
 CREATE TABLE CONSULTA_PRODUCTO (
@@ -268,7 +263,7 @@ FOR EACH ROW
       raise_application_error(-20001, 'Incidentes no pueden ser creados con consultas ya resueltas.');
     END IF;
   END;
-
+/
 CREATE OR REPLACE TRIGGER INCIDENTE_NO_LO_ES
 BEFORE INSERT ON INCIDENTE
 FOR EACH ROW
@@ -285,33 +280,7 @@ FOR EACH ROW
       raise_application_error(-20001, 'Incidentes deben ser consultas con mas de 24 horas de antigüedad.');
     END IF;
   END;
-
-
----test
-UPDATE consulta
-SET id_respuesta = 6
-WHERE id = (SELECT max(id)
-            FROM consulta);
-
-INSERT INTO especialidad (descripcion) VALUES ('Tecnica');
-
-INSERT INTO TIPO_CONSULTA (descripcion, id_especialidad) VALUES ('Muy tecnica', (SELECT max(id)
-                                                                                 FROM especialidad));
-
-SELECT *
-FROM CONSULTA;
-
-INSERT INTO consulta (id_tipo_consulta, rut_empresa, detalle, id_respuesta) VALUES ((SELECT max(id)
-                                                                                     FROM tipo_consulta), 1234567891011,
-                                                                                    '¿Donde?', 7);
-
-INSERT INTO respuesta (documento_funcionario, texto) VALUES (47442944, 'Anda');
-
-INSERT INTO consulta (id_tipo_consulta, rut_empresa, detalle, id_respuesta) VALUES ((SELECT max(id)
-                                                                                     FROM tipo_consulta), 1234567891011,
-                                                                                    '¿Donde?', 6);
----trigger
-
+  /
 
 CREATE OR REPLACE TRIGGER RESPUESTA_ESPECIALIDAD_UNICA
 BEFORE INSERT OR UPDATE ON CONSULTA
@@ -339,7 +308,7 @@ FOR EACH ROW
       END IF;
     END IF;
   END;
-
+/
 --  DATOS DE PRUEBA
 
 ALTER SESSION SET NLS_DATE_FORMAT = 'DD/MM/YYYY';
@@ -408,7 +377,7 @@ UPDATE CONSULTA
 SET ID_TIPO_CONSULTA = (SELECT MAX(ID)
                         FROM TIPO_CONSULTA)
 WHERE ID_RESPUESTA = (SELECT MAX(ID)
-                      FROM RESPUESTA)
+                      FROM RESPUESTA);
 
 INSERT INTO FUNCIONARIO_ESPECIALIDAD (DOCUMENTO_FUNCIONARIO, ID_ESPECIALIDAD) VALUES (47442944, (SELECT MAX(ID)
                                                                                                  FROM ESPECIALIDAD));
@@ -417,7 +386,6 @@ INSERT INTO FUNCIONARIO_ESPECIALIDAD (DOCUMENTO_FUNCIONARIO, ID_ESPECIALIDAD) VA
 
 -- UNO
 
-DROP TABLE IDS_PRODUCTOS_RESP_GEN;
 CREATE TABLE IDS_PRODUCTOS_RESP_GEN (
   ID_PRODUCTO NUMBER(10) CONSTRAINT ID_PRODUCTO_FK REFERENCES PRODUCTO
 );
@@ -462,11 +430,11 @@ IS
     END;
   END;
 
---- NAMBER CHU
+--- DOS
 CREATE OR REPLACE PROCEDURE GenerarIncidentes
 IS
   BEGIN
-    DECLARE CURSOR c1 IS
+    DECLARE CURSOR Consultas IS
       SELECT ID
       FROM CONSULTA
       WHERE ID_RESPUESTA IS NULL
@@ -474,21 +442,16 @@ IS
             AND ID NOT IN (SELECT ID_CONSULTA
                            FROM INCIDENTE);
     BEGIN
-      FOR id_consulta_t IN c1
+      FOR id_consulta_t IN Consultas 
       LOOP
         INSERT INTO INCIDENTE (ID_CONSULTA, ESTADO) VALUES (id_consulta_t.ID, 'Pendiente');
         COMMIT;
       END LOOP;
-
-      EXCEPTION
-      WHEN OTHERS THEN
-      dbms_output.put_line('Error insertando incidente!');
     END;
   END;
 
--- Tres
+-- TRES
 
-DROP TABLE PALABRAS_CLAVE_PARA_GENERICA;
 CREATE TABLE PALABRAS_CLAVE_PARA_GENERICA (
   ID_PALABRA_CLAVE NUMBER(10) CONSTRAINT ID_PALABRA_CLAVE_FK REFERENCES PALABRA_CLAVE
 );
@@ -520,10 +483,7 @@ CREATE OR REPLACE PROCEDURE RevisarRespuestaGenerica(id_respuesta_in IN NUMBER, 
     END;
   END;
 
--- cuatro
--- taria bueno usar esto (no me anda): https://stackoverflow.com/questions/242771/oracle-stored-procedure-with-parameters-for-in-clause
--- DATOS DE PRUEBA:
-
+-- CUATRO
 
 UPDATE RESPUESTA
 SET ESTADO = 'Revisada Ok'
@@ -543,14 +503,13 @@ SET ID_TIPO_CONSULTA = (SELECT MAX(ID)
                         FROM TIPO_CONSULTA)
 WHERE ID_RESPUESTA = (SELECT MAX(ID)
                       FROM RESPUESTA);
+					  
+INSERT INTO PALABRA_CLAVE_PROCEDIMIENTO VALUES((SELECT MAX(ID) FROM PALABRA_CLAVE));
 
 -- CREACION DE TABLAS
 CREATE TABLE PALABRA_CLAVE_PROCEDIMIENTO (
   ID_PALABRA_CLAVE NUMBER(10) CONSTRAINT PALABRA_CLAVE_PROCEDIMIENTO_FK REFERENCES PALABRA_CLAVE
 );
-
-INSERT INTO PALABRA_CLAVE_PROCEDIMIENTO VALUES ((SELECT MAX(ID)
-                                                 FROM PALABRA_CLAVE));
 
 -- PROCEDIMIENTO 4
 CREATE OR REPLACE PROCEDURE RESPUESTASGENERICAS(tipo_de_consulta IN VARCHAR2)
@@ -558,7 +517,7 @@ IS
   BEGIN
     DECLARE
       CURSOR RESPUESTAS IS
-        SELECT R.TEXTO
+        SELECT DISTINCT(R.TEXTO)
         FROM CONSULTA C
           JOIN RESPUESTA R ON C.ID_RESPUESTA = R.ID
           JOIN TIPO_CONSULTA TC ON C.ID_TIPO_CONSULTA = TC.ID
@@ -599,14 +558,10 @@ IS
       COMMIT;
     END;
   END;
--- test
--- execute RESPUESTASGENERICAS('Funcionamiento local');
--- deberia dar al fondo a la derecha y juan
 
--- coso 5
-CREATE OR REPLACE PROCEDURE ACTUALIZAR_ESPECIALIDADES(
-  mes  NUMBER DEFAULT EXTRACT(MONTH FROM (sys_extract_utc(systimestamp))),
-  anio NUMBER DEFAULT EXTRACT(YEAR FROM (sys_extract_utc(systimestamp))))
+-- CINCO
+CREATE OR REPLACE PROCEDURE ACTUALIZAR_ESPECIALIDADES (mes NUMBER default EXTRACT(MONTH FROM (sys_extract_utc(systimestamp))), anio number default EXTRACT(YEAR FROM (sys_extract_utc(systimestamp))))
+
 IS
   count_especialidades NUMBER;
   BEGIN
@@ -641,7 +596,8 @@ IS
     END;
   END;
 
-DROP TABLE CACHE_INFO_FUNCIONARIOS;
+-- SEIS
+
 CREATE TABLE CACHE_INFO_FUNCIONARIOS (
   MES       NUMBER NOT NULL,
   ANO       NUMBER NOT NULL,
@@ -649,7 +605,6 @@ CREATE TABLE CACHE_INFO_FUNCIONARIOS (
   PRIMARY KEY (MES, ANO)
 );
 
-DROP TABLE ULTIMO_FUNCIONARIO;
 CREATE TABLE ULTIMO_FUNCIONARIO (
   DOCUMENTO_FUNCIONARIO NUMBER NOT NULL CONSTRAINT DOCUMENTO_FUN_ULTIMO_FUN REFERENCES FUNCIONARIO,
   MES                   NUMBER NOT NULL,
@@ -820,27 +775,8 @@ CREATE OR REPLACE PROCEDURE ActualizarCacheFuncionarios(mes_param NUMBER, ano_pa
       WHERE CACHE_INFO_FUNCIONARIOS.ANO = ano_param AND CACHE_INFO_FUNCIONARIOS.MES = mes_param;
     END IF;
   END;
-
-SELECT *
-FROM CACHE_INFO_FUNCIONARIOS;
-SELECT *
-FROM ULTIMO_FUNCIONARIO;
-
-DELETE FROM CACHE_INFO_FUNCIONARIOS;
-DELETE FROM ULTIMO_FUNCIONARIO;
-
-
-INSERT INTO FUNCIONARIO (DOCUMENTO, TIPO, PAIS, DIRECCION, NOMBRE, FECHA_NACIMIENTO, FECHA_INGRESO)
-VALUES (48015536, 'Operario', 'Uruguay', '-', 'Bruno', sysdate, sysdate);
-
-INSERT INTO RESPUESTA (DOCUMENTO_FUNCIONARIO, TEXTO) VALUES (48015536, 'coso coso');
-SELECT *
-FROM RESPUESTA;
-
-INSERT INTO FUNCIONARIO_ESPECIALIDAD (DOCUMENTO_FUNCIONARIO, ID_ESPECIALIDAD) VALUES (48015536, 2);
-SELECT *
-FROM ESPECIALIDAD;
-
-INSERT INTO CONSULTA (ID_TIPO_CONSULTA, RUT_EMPRESA, DETALLE, ID_RESPUESTA)
-VALUES ((SELECT MAX(ID)
-         FROM TIPO_CONSULTA), '1234567891011', '¿COSO?', 4);
+.
+.
+.
+.
+.
