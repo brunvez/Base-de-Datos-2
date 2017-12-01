@@ -325,7 +325,7 @@ CREATE OR REPLACE PROCEDURE GenerarRespuestaGenerica(id_tipo_cons IN NUMBER,
                                                      via_comunicacion in VARCHAR,
                                                      tiempo_de_comunicacion in NUMBER)
 IS
-  id_nueva_consulta NUMBER;
+  id_nueva_consulta  NUMBER;
   id_nueva_respuesta NUMBER;
   BEGIN
     DECLARE CURSOR cursor_productos IS
@@ -335,11 +335,12 @@ IS
     BEGIN
       INSERT INTO RESPUESTA (DOCUMENTO_FUNCIONARIO, TEXTO, ESTADO)
       VALUES (doc_funcionario, respuesta_ofrecida, 'Pendiente de revision')
-      RETURNING ID into id_nueva_respuesta;
+      RETURNING ID INTO id_nueva_respuesta;
 
       INSERT INTO CONSULTA (ID_TIPO_CONSULTA, RUT_EMPRESA, DETALLE, VIA_DE_CONTACTO, ID_RESPUESTA, FECHA_CREACION, FECHA_RESOLUCION, TIEMPO_DE_COMUNICACION_MINUTOS)
-      VALUES (id_tipo_cons, rut_cliente, detalle_consulta, via_comunicacion, id_nueva_respuesta, sysdate, sysdate, tiempo_de_comunicacion)
-      RETURNING ID into id_nueva_consulta;
+      VALUES (id_tipo_cons, rut_cliente, detalle_consulta, via_comunicacion, id_nueva_respuesta, sysdate, sysdate,
+              tiempo_de_comunicacion)
+      RETURNING ID INTO id_nueva_consulta;
 
       FOR producto IN cursor_productos
       LOOP
@@ -358,8 +359,9 @@ IS
       SELECT ID
       FROM CONSULTA
       WHERE ID_RESPUESTA IS NULL
-        AND EXTRACT(DAY FROM (sys_extract_utc(systimestamp) - FECHA_CREACION)) >= 1
-        AND ID NOT IN (SELECT ID_CONSULTA FROM INCIDENTE);
+            AND EXTRACT(DAY FROM (sys_extract_utc(systimestamp) - FECHA_CREACION)) >= 1
+            AND ID NOT IN (SELECT ID_CONSULTA
+                           FROM INCIDENTE);
     BEGIN
       FOR id_consulta_t IN Consultas 
       LOOP
@@ -403,11 +405,11 @@ CREATE OR REPLACE PROCEDURE RevisarRespuestaGenerica(id_respuesta_in IN NUMBER, 
   END;
 
 -- CUATRO
-
 CREATE TABLE PALABRA_CLAVE_PROCEDIMIENTO (
   ID_PALABRA_CLAVE NUMBER(10) CONSTRAINT PALABRA_CLAVE_PROCEDIMIENTO_FK REFERENCES PALABRA_CLAVE
 );
 
+-- PROCEDIMIENTO 4
 CREATE OR REPLACE PROCEDURE RESPUESTASGENERICAS(tipo_de_consulta IN VARCHAR2)
 IS
   BEGIN
@@ -421,7 +423,7 @@ IS
           JOIN PALABRA_CLAVE_RESPUESTA PCR ON R.ID = PCR.ID_RESPUESTA
           JOIN PALABRA_CLAVE PC ON PCR.ID_PALABRA_CLAVE = PC.ID
         WHERE TC.DESCRIPCION = tipo_de_consulta
-				AND R.ESTADO = 'Revisada Ok'
+              AND R.ESTADO = 'Revisada Ok'
               AND PC.PALABRA IN (SELECT PALABRA
                                  FROM PALABRA_CLAVE_PROCEDIMIENTO
                                    JOIN PALABRA_CLAVE
@@ -449,14 +451,15 @@ IS
         DBMS_OUTPUT.PUT_LINE(funcionario_cursor.NOMBRE);
         DBMS_OUTPUT.PUT_LINE('----------------------------------------------');
       END LOOP;
-	  
-	  DELETE FROM PALABRA_CLAVE_PROCEDIMIENTO;
-	  COMMIT;
+
+      DELETE FROM PALABRA_CLAVE_PROCEDIMIENTO;
+      COMMIT;
     END;
   END;
 
 -- CINCO
 CREATE OR REPLACE PROCEDURE ACTUALIZAR_ESPECIALIDADES (mes NUMBER default EXTRACT(MONTH FROM (sys_extract_utc(systimestamp))), anio number default EXTRACT(YEAR FROM (sys_extract_utc(systimestamp))))
+
 IS
   count_especialidades NUMBER;
   BEGIN
@@ -575,7 +578,7 @@ CREATE OR REPLACE PROCEDURE ImprimirFuncionarios(mes_param       NUMBER, ano_par
     BEGIN
       FOR row_funcionario IN c_funcionarios
       LOOP
-
+        DBMS_OUTPUT.PUT_LINE(row_funcionario.DOCUMENTO);
         ActualizarCacheFuncionarios(mes_param, ano_param,
                                     'Funcionario: ' || row_funcionario.NOMBRE || ' Fecha de ingreso: ' ||
                                     row_funcionario.FECHA_INGRESO ||
@@ -600,8 +603,9 @@ CREATE OR REPLACE PROCEDURE ImprimirFuncionarios(mes_param       NUMBER, ano_par
             ActualizarCacheFuncionarios(mes_param, ano_param, 'Tipo de Consulta: ' || row_tipo_consulta.DESCRIPCION);
             DECLARE CURSOR c_clientes IS SELECT
                                            EMPRESA.NOMBRE_FANTASIA,
-                                           SUM(EXTRACT(MINUTE FROM (CONSULTA.FECHA_RESOLUCION -
-                                                                    CONSULTA.FECHA_CREACION))) "TIEMPO_RESOLUCION"
+                                           SUM(EXTRACT(DAY FROM (CONSULTA.FECHA_RESOLUCION -
+                                                                 CONSULTA.FECHA_CREACION) *
+                                                                (24 * 60))) TIEMPO_RESOLUCION
                                          FROM EMPRESA
                                            JOIN CONSULTA ON EMPRESA.RUT = CONSULTA.RUT_EMPRESA
                                            JOIN RESPUESTA ON CONSULTA.ID_RESPUESTA = RESPUESTA.ID
@@ -628,8 +632,9 @@ CREATE OR REPLACE PROCEDURE ImprimirFuncionarios(mes_param       NUMBER, ano_par
                     AND EXTRACT(MONTH FROM CONSULTA.FECHA_RESOLUCION) = mes_param AND
                     EXTRACT(YEAR FROM CONSULTA.FECHA_RESOLUCION) = ano_param;
               ActualizarCacheFuncionarios(mes_param, ano_param, 'Cantidad:        ' || cantidad_respuestas);
-              SELECT AVG(EXTRACT(MINUTE FROM (CONSULTA.FECHA_RESOLUCION -
-                                              CONSULTA.FECHA_CREACION)))
+              SELECT AVG(EXTRACT(DAY FROM (CONSULTA.FECHA_RESOLUCION -
+                                           CONSULTA.FECHA_CREACION) *
+                                          (24 * 60)))
               INTO promedio_resolucion
               FROM CONSULTA
                 JOIN RESPUESTA ON CONSULTA.ID_RESPUESTA = RESPUESTA.ID
@@ -644,7 +649,7 @@ CREATE OR REPLACE PROCEDURE ImprimirFuncionarios(mes_param       NUMBER, ano_par
           END LOOP;
         END;
         INSERT INTO ULTIMO_FUNCIONARIO (DOCUMENTO_FUNCIONARIO, ANO, MES)
-        VALUES (row_funcionario.DOCUMENTO, ano, mes_param);
+        VALUES (row_funcionario.DOCUMENTO, ano_param, mes_param);
         COMMIT;
       END LOOP;
     END;
